@@ -4,7 +4,7 @@ import sqlite3
 
 st.set_page_config(page_title="Pension Data Dashboard", layout="wide")
 
-# Load data
+# Load the database
 @st.cache_data
 def load_data():
     conn = sqlite3.connect("cleaned_data.db")
@@ -13,41 +13,47 @@ def load_data():
     return df
 
 df = load_data()
-df = df[df["Year"].notnull()]  # Ensure Year exists
+df = df[df["Year"].notnull()]
 df["Year"] = df["Year"].astype(int)
 
-# Identify numeric columns
+# Detect numeric columns (data points)
 numeric_cols = df.select_dtypes(include=["float64", "int64"]).columns.tolist()
 
-# Sidebar Filters
-st.sidebar.header("Filter Options")
-mode = st.sidebar.radio("Choose Analysis Mode", ["Single Country", "Compare Countries"])
+# Sidebar filters
+st.sidebar.title("Filter Data")
+countries = sorted(df["Country"].dropna().unique())
+years = sorted(df["Year"].unique())
 
-if mode == "Single Country":
-    country = st.sidebar.selectbox("Select Country", sorted(df["Country"].dropna().unique()))
-    df_country = df[df["Country"] == country].sort_values("Year")
+selected_countries = st.sidebar.multiselect("Select Countries", countries, default=countries[:1])
+selected_years = st.sidebar.multiselect("Select Years", years, default=years)
+selected_indicators = st.sidebar.multiselect("Select Data Points", numeric_cols, default=numeric_cols[:1])
 
-    st.title(f"Pension Data Dashboard: {country}")
-    st.markdown(f"### View data for **{country}**")
+# Filter data
+filtered_df = df[
+    (df["Country"].isin(selected_countries)) &
+    (df["Year"].isin(selected_years))
+]
 
-    st.dataframe(df_country, use_container_width=True)
+# Title
+st.title("📊 Pension Data Explorer")
 
-    if numeric_cols:
-        st.subheader("📊 Multi-Line Chart (Same Country)")
-        selected_vars = st.multiselect("Select up to 3 numeric indicators", numeric_cols, max_selections=3)
+# Show table
+st.markdown(f"### Showing data for: {', '.join(selected_countries)}")
+st.dataframe(filtered_df[["Country", "Year"] + selected_indicators], use_container_width=True)
 
-        if selected_vars:
-            chart_data = df_country[["Year"] + selected_vars].set_index("Year")
-            st.line_chart(chart_data)
+# Plot if one country is selected
+if len(selected_countries) == 1 and selected_indicators:
+    st.markdown("### 📈 Time Series Chart (Single Country)")
+    chart_df = filtered_df[["Year"] + selected_indicators].groupby("Year").mean().sort_index()
+    st.line_chart(chart_df)
 
-else:
-    st.title("📈 Pension Data Comparison Across Countries")
-    selected_countries = st.sidebar.multiselect("Select Countries", sorted(df["Country"].dropna().unique()), max_selections=5)
-    selected_variable = st.sidebar.selectbox("Select Numeric Indicator to Compare", numeric_cols)
+# Plot if one indicator is selected and multiple countries are selected
+elif len(selected_countries) > 1 and len(selected_indicators) == 1:
+    indicator = selected_indicators[0]
+    st.markdown(f"### 📈 Compare Countries for: {indicator}")
+    compare_df = filtered_df.pivot_table(index="Year", columns="Country", values=indicator)
+    st.line_chart(compare_df)
 
-    if selected_countries:
-        df_filtered = df[df["Country"].isin(selected_countries)][["Country", "Year", selected_variable]]
-        df_pivot = df_filtered.pivot_table(index="Year", columns="Country", values=selected_variable)
-
-        st.subheader(f"📊 {selected_variable} Across Selected Countries")
-        st.line_chart(df_pivot)
+# Info if too many/missing selections
+elif len(selected_indicators) != 1 and len(selected_countries) > 1:
+    st.warning("To compare countries, select **only one** data point.")
