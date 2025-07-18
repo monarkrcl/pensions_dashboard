@@ -69,6 +69,16 @@ else:
         compare_df = filtered_df.pivot_table(index="Year", columns="Country", values=indicator)
         st.line_chart(compare_df)
 
-    # Warning for invalid chart combinations
-    elif len(selected_countries) > 1 and len(selected_indicators) > 1:
-        st.info("To compare multiple countries, please select only **one** data point at a time.")
+    # Table: Multiple indicators and multiple countries
+    elif len(selected_countries) > 1 and len(selected_indicators) >= 1:
+        st.markdown("### 📊 Side-by-Side Comparison Table")
+
+        for indicator in selected_indicators:
+            st.markdown(f"#### {indicator}")
+            compare_df = filtered_df.pivot_table(
+                index="Year",
+                columns="Country",
+                values=indicator
+            ).sort_index()
+            st.dataframe(compare_df, use_container_width=True)
+
